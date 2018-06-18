@@ -1,0 +1,39 @@
+---
+title: "Homework1"
+author: "Pei Tao"
+date: "6/17/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+weather <- read.csv("weather.csv", as.is = TRUE)
+train <- read.csv("citibike_train.csv", as.is = TRUE)
+train <- merge(train, weather, by="date", all.x = TRUE)
+
+test <- read.csv("citibike_test.csv", as.is = TRUE)
+test <- merge(test, weather, by="date", all.x = TRUE)
+```
+
+Write a function that performs k-nearest neighbors regression
+
+```{r}
+knn <- function(xtrain, xtest, ytrain, k) {
+  yhat <- apply(xtest, 1, function(testrow) {
+            xdist <- apply(xtrain, 1, function(xrow) sum((xrow-testrow)^2 ))
+            nbs <- order(xdist)[1:k]
+            return(mean(ytrain[nbs]))
+          })
+  return(yhat)
+}
+```
+
+Now consider the Citi Bike data and the goal of modeling the number of daily trips. We will consider 2 possible ways of predicting the number of trips. k-nearest neighbor regression and linear regression
+
+```{r}
+hist(train$trips)
+hist(train$n_stations)
+```

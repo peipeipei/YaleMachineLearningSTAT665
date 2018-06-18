@@ -37,3 +37,161 @@ Now consider the Citi Bike data and the goal of modeling the number of daily tri
 hist(train$trips)
 hist(train$n_stations)
 ```
+
+```{r}
+plot(train$n_stations)
+```
+
+```{r}
+predcols <- colnames(train)[c(3, 5:10)]
+plot(train[,predcols])
+```
+
+```{r}
+hist(train$AWND)
+summary(train$AWND)
+```
+
+There are so weird values in wind speed where some are set to -9999. Wind speeds cannot be less than 0 so we'll get rid of the rows were the wind speeds are bad.
+
+```{r}
+train <- train[train$AWND > -0,]
+```
+
+Let's split the training data into a training and validation set with an 80/20 split.
+
+```{r}
+set.seed(665)
+w <- sample(1:nrow(train), nrow(train)*0.8, replace = FALSE)
+train_1 <- train[w,]
+valid <- train[-w,]
+```
+
+### k-nearest neighbor regression
+
+We need to find the best k to use 
+
+```{r}
+MSE <- function(y, yhat) {
+  mean((y-yhat)^2)
+}
+```
+
+```{r}
+kvals <- seq(2, 50)
+mse_train <- rep(NA, length(kvals))
+mse_valid <- rep(NA, length(kvals))
+
+for (i in 1:length(kvals)) {
+  k <- kvals[i]
+  mse_train[i] <- MSE(train_1$trips, knn(train_1[,predcols], train_1[,predcols], train_1$trips, k = k))
+  mse_valid[i] <- MSE(valid$trips, knn(train_1[,predcols], valid[,predcols], train_1$trips, k = k))
+}
+
+plot(mse_train ~ kvals, type="l", main = "MSE Train")
+plot(mse_valid ~ kvals, type="l", main = "MSE Valid")
+
+
+```
+
+```{r}
+kvals[which.min(mse_valid)]
+```
+
+The minimum validation MSE is achieved with $k=32$ neighbors
+
+### Linear Regression
+
+With linear regression, we are able to handle both categorical and quantitative predictors, and so we will see if we can extract some useful features from the date variable. Intuitively, there are more commuters during the weekday than
+during the weekend, and holidays may behave more like weekends than weekdays, etc.
+
+```{r}
+library(lubridate)
+
+train$date <- mdy(train$date)
+train$month <- factor(month(train$date, label=TRUE),
+                      ordered = FALSE) # to take care of seasons
+train$dayofweek <- factor(wday(train$date, label=TRUE),
+                          ordered = FALSE) # to take care of differences 
+                                                # bw weekdays
+
+test$date <- mdy(test$date)
+test$month <- factor(month(test$date, label=TRUE), ordered = FALSE) 
+test$dayofweek <- factor(wday(test$date, label=TRUE), ordered = FALSE)
+```
+
+Re-create our training/validation data split, since the training set now has extra variables. 
+
+```{r}
+set.seed(665)
+w <- sample(1:nrow(train), nrow(train)*0.8, replace = FALSE)
+train_1 <- train[w,]
+valid <- train[-w,]
+```
+
+Now let's try to find a linear model. We'll try a lot out
+
+```{r}
+lm1 <- lm(trips ~ . - date, data=train_1)
+anova(lm1)
+```
+
+It appears that `TMIN` is not statistically significant at the 0.05 level, so  we will remove it from the model. It's possible that minimum temperature is highly correlated with maximum temperature, and so we don't need both in the model.
+
+```{r}
+lm2 <- lm(trips ~ . - date - TMIN, data=train_1)
+anova(lm2)
+```
+
+At this point, all of the predictors appear to be significant in our model.
+
+```{r}
+qqnorm(resid(lm2))
+plot(resid(lm2) ~ fitted(lm2))
+```
+
+The second set of plots shows a slight curvature, suggesting that we mightconsider using a transformation. A square root transformation does well
+
+```{r}
+lm3 <- lm(sqrt(trips) ~ . - date - TMIN, data=train_1)
+anova(lm3)
+
+qqnorm(resid(lm3))
+plot(resid(lm3) ~ fitted(lm3))
+```
+
+Let's evaluate these 3 candidate models based on their validation MSE:
+
+```{r}
+MSE(predict(lm1, newdata=valid), valid$trips)
+MSE(predict(lm2, newdata=valid), valid$trips)
+MSE(predict(lm3, newdata=valid)^2, valid$trips)
+
+```
+
+compare these values to the validation MSE obtained from our best knn model
+
+```{r}
+mse_valid[which.min(mse_valid)]
+```
+
+In this case, the third linear regression model clearly wins out. We might rationalize this to be the result of much important included information in the linear regression models. Clearly, day of week and month of the year mattered. 
+
+```{r}
+summary(lm3)
+```
+
+We can see that the non-winter months have far more usage than the winter months, based on the magnitudes of the coefficients. We can also see that weekdays have far more usage than weekends (Sunday is the baseline level here, Saturdays see more bike usage than Sundays, and each of the weekdays see significantly more bike usage than the weekends based on the coefficients.) Warmer temperatures tend to be associated with higher usage, and snow/rain/wind tend to be 
+associated with lower usage.
+
+Now we'll make predictions for the test set, after refitting the third regression model on the entire training set.
+
+```{r}
+lm3_final <- lm(sqrt(trips) ~ . - date - TMIN, data=train)
+pred <- predict(lm3_final, newdata=test)^2
+pred[test$AWND == -9999] <- NA    # we removed these
+
+write.csv(cbind(date=as.character(test$date), trips=pred), "predictions.csv", row.names=FALSE)
+```
+
+

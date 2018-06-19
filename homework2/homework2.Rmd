@@ -1,0 +1,155 @@
+---
+title: "Homework 2"
+author: "Pei Tao"
+date: "6/18/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+train <- read.csv("spam_train.csv", as.is = TRUE)
+test <- read.csv("spam_test.csv", as.is = TRUE)
+```
+
+## Part 1 
+
+Task: Use k-nearest neighbors regression to impute the missing values in the capital_run_length_average column with k = 15 using the other predictors after standardizing (i.e. rescaling) them.
+
+```{r}
+dim(train)
+head(train)
+```
+
+```{r}
+means <- apply(train, 2, mean)
+sds <- apply(train, 2, sd)
+```
+
+```{r}
+xtrain.1 <- sapply(1:(ncol(train)), function(i) (train[,i]-means[i])/sds[i])
+xtrain.1 <- xtrain.1[,-c(55, 58)] # removing cap_run... and spam
+xtest.1 <- sapply(1:(ncol(test)), function(i) (test[,i]-means[i])/sds[i])
+xtest.1 <- xtest.1[,-c(55)] # removing cap_run...
+```
+
+Now to impute the missing column values:
+
+```{r}
+library(FNN)
+
+toFill <- which(is.na(c(train[,55], test[,55])))
+vals <- knn.reg(rbind(xtrain.1, xtest.1)[-toFill,], 
+                rbind(xtrain.1, xtest.1)[toFill,],
+                c(train[,55], test[,55])[-toFill],
+                k=15)$pred
+train[is.na(train[,55]),55] <- vals[toFill <= nrow(train)]
+test[is.na(test[,55]),55] <- vals[toFill > nrow(train)]
+```
+
+```{r}
+summary(test$capital_run_length_average)
+summary(train$capital_run_length_average)
+```
+
+Now we have no more NAs left
+
+## Part 2
+
+Write a function named knnclass() that performs k-nearest neighbors classification.
+
+- The function should automatically do a split of the training data into a sub-training set (80%) and a validation set (20%) for selecting the optimal k. (More sophisticated cross-validation is not necessary.)
+- The function should standardize each column: for a particular variable, say x1, compute the mean and standard deviation of x1 using the training set only, say ¯x1 and s1; then for each observed x1 in the training set and test set, subtract ¯x1, then divide by s1.
+
+```{r}
+knnclass <- function(xtrain, xtest, ytrain) {
+  # standardizing using TRAINING set ONLY
+  means <- apply(xtrain, 2, mean)
+  stds <- apply(xtrain, 2, sd)
+  xtrain <- sapply(1:ncol(xtrain), function(i) (xtrain[,i] - means[i])/stds[i])
+  xtest <- sapply(1:ncol(xtest), function(i) (xtest[,i] - means[i])/stds[i])
+  
+  # split the training set into 80% subtraining set and 20% validation set
+  s <- sample(1:nrow(xtrain), nrow(xtrain)*.80, replace = FALSE)
+  xsubtrain <- xtrain[s,]
+  xvalid <- xtrain[-s,]
+  ysubtrain <- ytrain[s]
+  yvalid <- ytrain[-s]
+  
+  # find optimal k
+  kToTest <- 2:30
+  
+  distanceMatrix <- apply(xvalid, 1, function(testrow) {
+    dists <- apply(xsubtrain, 1, function(xrow) {
+      sum((xrow - testrow)^2)
+    })
+    order(dists)
+  })
+
+  error <- sapply(kToTest, function(k) {
+    yhat <- sapply(1:nrow(xvalid), function(i) {
+      avgGuess <- mean(ysubtrain[distanceMatrix[1:k, i]])
+      return (ifelse(avgGuess == 0.5, sample(0:1,1), (avgGuess > 0.5)*1))
+    })
+    return(mean(yhat != yvalid))
+  })
+  
+  bestk <- kToTest[which.min(error)[1]]
+  print(paste("optimal k is", bestk))
+  
+  distanceMatrixTest <- apply(xtest, 1, function(testrow) {
+    dists <- apply(xsubtrain, 1, function(xrow) {
+      sum((xrow - testrow)^2)
+    })
+    order(dists)
+  })
+  
+  yhat <- sapply(1:nrow(xtest), function(i) {
+    avgGuess <- mean(ytrain[distanceMatrixTest[1:bestk,i]])
+    return (ifelse(avgGuess == 0.5, sample(0:1,1), (avgGuess > 0.5)*1))
+  })
+  
+  return(yhat)
+}
+
+```
+
+## Part 3
+
+* `knnclass()` using all predictors except for `capital_run_length_average` (say, if we were distrustful of our imputation approach). Call these predictions `knn_pred1`.
+
+```{r}
+set.seed(665)
+system.time({
+  knn_pred1 <- knnclass(train[,-c(55, 58)], test[,-55], train[,58])
+})
+```
+
+* `knnclass()` using all predictors including `capital_run_length_average` with the imputed values. Call these predictions `knn_pred2`.
+
+```{r}
+set.seed(665)
+system.time({
+  knn_pred2 <- knnclass(train[,-c(58)], test, train[,58])
+})
+```
+
+* logistic regression using all predictors except for `capital_run_length_average`. Call these predictions `logm_pred1`.
+
+```{r, warning=FALSE}
+m3 <- glm(spam ~ . - capital_run_length_average, data=train, family=binomial)
+logm_pred1 <- (predict(m3, newdata=test, type="response") >= 0.5)*1
+```
+
+* logistic regression using all predictors including `capital_run_length_average` with the imputed values. Call these predictions `logm_pred2`.
+
+```{r, warning=FALSE}
+m4 <- glm(spam ~ ., data=train, family=binomial)
+logm_pred2 <- (predict(m4, newdata=test, type="response") >= 0.5)*1
+```
+
+
+
+

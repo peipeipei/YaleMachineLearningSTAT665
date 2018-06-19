@@ -150,6 +150,15 @@ m4 <- glm(spam ~ ., data=train, family=binomial)
 logm_pred2 <- (predict(m4, newdata=test, type="response") >= 0.5)*1
 ```
 
+```{r}
+summary(m4)
+```
 
-
-
+```{r}
+outdat <- data.frame(capital_run_length_average=test$capital_run_length_average,
+                     knn_pred1 = knn_pred1,
+                     knn_pred2 = knn_pred2,
+                     logm_pred1 = logm_pred1,
+                     logm_pred2 = logm_pred2)
+write.csv(outdat, "homework2_results.csv", row.names=FALSE)
+```

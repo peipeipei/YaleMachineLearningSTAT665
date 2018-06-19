@@ -1,0 +1,94 @@
+---
+title: "Homework 3"
+author: "Pei Tao"
+date: "6/19/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+train <- read.csv("digits_train.csv", as.is = TRUE)
+valid <- read.csv("digits_valid.csv", as.is = TRUE)
+test <- read.csv("digits_test.csv", as.is = TRUE)
+```
+
+## Part 1 
+
+```{r}
+plotDigit <- function(k, dat) {
+  p <- matrix(as.numeric(dat[k,1:256]),16,16)
+  image(x=1:16, y=1:16, p[,16:1], xlab="", ylab="", main=paste("Row: ", k, " | Digit: ", dat[k,257]))
+  return()
+}
+```
+
+I imagine that 1’s and 7’s will be hard to distinguish. Perhaps due to the way that these pixel data were normalized from the input device, there seems to be an unusually long left-stroke on the 1’s.
+
+```{r}
+par(mfrow=c(3,4))
+set.seed(665)
+ones <- train[train$digit == 1,]
+sevens <- train[train$digit == 7,]
+v <- sapply(sample(1:nrow(ones), 6), plotDigit, dat=ones)
+v <- sapply(sample(1:nrow(sevens), 6), plotDigit, dat=sevens)
+```
+
+## Part 2
+
+### K-Nearest Neighbors
+
+Train a k-nearest neighbor and a linear discriminant analysis classifier using your training set. Of course, you may need to find a good value of k, and the validation set could be helpful for that part.
+
+```{r}
+library(FNN)
+
+kvals <- 1:40
+error <- rep(NA, length(kvals))
+for (i in 1:length(kvals)) {
+  k <- kvals[i]
+  res <- knn(train[,-257], valid[,-257], train[,257], k=k)
+  error[i] <- mean(res != valid[,257])
+}
+
+plot(error ~ kvals, type="l", main="Validation Error Rates by k", xlab="k")
+```
+
+```{r}
+kvals[which.min(error)]
+error[kvals[which.min(error)]]
+```
+
+Best k-nearest neighbors approach appears to use k = 1 neighbor.
+The best error rate achieved is 11.3%.
+
+### Logistic Regression
+
+Logistic regression should not be used here because there are far too many columns in the dataset.
+
+### LDA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

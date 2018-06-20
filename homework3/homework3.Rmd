@@ -70,21 +70,77 @@ Logistic regression should not be used here because there are far too many colum
 
 ### LDA
 
+```{r}
+library(MASS)
+
+m3 <- lda(digit ~., data=train)
+p3 <- predict(m3, newdata=valid)$class
+table(p3, valid$digit)
+```
+
+```{r}
+mean(p3 != valid$digit)
+```
+
+The full LDA model gives us a validation error rate of 19.8%.
+
+```{r}
+res <- knn(train[,-257], valid[,-257], train[,257], k=1)
+knn_confusion <- table(fitted=res, actual=valid$digit)
+lda_confusion <- table(fitted=p3, actual=valid$digit)
+knn_confusion
+```
+
+```{r}
+lda_confusion
+```
 
 
+```{r}
+(colSums(knn_confusion) - diag(knn_confusion))/colSums(knn_confusion)
+```
 
+Percentage misclassified by digit by KNN approach
 
+```{r}
+(colSums(lda_confusion) - diag(lda_confusion))/colSums(lda_confusion)
+```
 
+Percentage misclassified by digit by LDA approach
 
+```{r}
+knn_pred <- knn(rbind(train[,-257], valid[,-257]),
+test[-257], c(train[,257], valid[,257]), k=6)
+lda_model <- lda(digit ~., data=rbind(train, valid))
+lda_pred <- predict(lda_model, newdata=test)$class
 
+write.csv(data.frame(knn_pred = knn_pred, lda_pred = lda_pred), "HW3_netid.csv", row.names = FALSE)
+```
 
+# Part 3
 
+We will explore the use of multinomial logistic regression with a dimension-reduction pre-processing step, achieved using linear discriminant analysis.
 
+```{r}
+m1 <- lda(digit ~ ., data=train)
+trainlds <- as.data.frame(predict(m1)$x)
+trainlds$digit <- train$digit
+validlds <- as.data.frame(predict(m1, newdata=valid)$x)
+validlds$digit <- valid$digit
+```
 
-
-
-
-
+```{r}
+library(nnet)
+errs <- rep(NA, 9)
+for (k in 1:9) {
+f <- paste("digit ~", paste(paste("LD", 1:k, sep=""), collapse=" + "))
+m2 <- multinom(as.formula(f), data=trainlds, trace=FALSE)
+preds <- predict(m2, newdata=validlds)
+errs[k] <- mean(preds != valid$digit)
+}
+plot(1:9, errs, main="Validation Error for Different Logit Models",
+xlab="# Linear Discriminants Used", ylab="Misclassification Error Rate")
+```
 
 
 

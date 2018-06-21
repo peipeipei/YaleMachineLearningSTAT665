@@ -1,0 +1,144 @@
+---
+title: "Homework 4"
+author: "Pei Tao"
+date: "6/20/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+x <- read.csv("communities.csv", as.is = TRUE)
+```
+
+## Part 1
+
+We’ll start with some basic explorations of the dataset. Answer the following questions:
+(1) How many distinct states are represented in this dataset? How many distinct counties are represented?
+(2) Missing values are a problem in this dataset (coded as NA). Produce a frequency table with the number of missing values per column. That is to say, if all columns either have 0, 50, or 200 missing values, you should produce a frequency table that tells us how many columns fall into each of these categories. We will now use this reduced dataset for subsequent parts of the assignment.
+(3) Discard all columns with more than 50% of the values missing (we probably can’t use these variables for something like linear regression). Reproduce the frequency table from (2) using the reduced dataset.
+(4) Plot a histogram of the response variable ViolentCrimesPerPop. In a sentence, what do you learn about the distribution of this variable from the plot? (You should also skim the Codebook linked above to get a sense of what the units/scale are for the different variables.)
+
+```{r}
+head(x)
+colnames(x)
+length(unique(x$state))
+```
+
+```{r}
+nonNAcounty <- !is.na(x$county)
+length(unique(paste(x$state[nonNAcounty], x$county[nonNAcounty])))
+```
+
+```{r}
+length(unique(paste(x$state[nonNAcounty], x$county[nonNAcounty]))) + sum(is.na(x$county))
+```
+
+247 unique counties if you excude the NA ones. 1421 counties if you assume each county that is NA is unique
+
+```{r}
+v <- apply(x, 2, function(y) sum(is.na(y)))
+table(v)
+```
+
+```{r}
+x <- x[, v <= (ncol(x)/2)]
+v <- apply(x, 2, function(y) sum(is.na(y)))
+table(v)
+```
+
+```{r}
+hist(x$ViolentCrimesPerPop)
+```
+
+## Part 2
+
+```{r}
+which(v==1)
+x <- x[,-which(v == 1)]
+x$state <- factor(x$state)
+```
+
+```{r}
+m.empty <- lm(ViolentCrimesPerPop ~ 1, data=x)
+m.full <- lm(ViolentCrimesPerPop ~ . - communityname - fold - state, data=x)
+
+mf <- step(m.empty, scope=list(upper=m.full), direction="forward", trace=FALSE)
+mba <- step(m.full, scope = list(lower = m.empty), direction="backward", trace=F)
+mb <- step(m.empty, scope=list(upper=m.full), direction="both", trace=F)
+```
+
+```{r}
+length(coef(mf))-1
+length(coef(mba))-1
+length(coef(mb))-1
+```
+
+```{r}
+summary(mf)$r.squared
+summary(mba)$r.sq
+summary(mb)$r.sq
+```
+
+The forward variable selection used 37 predictors. The backward variable selection procedure used 53 predictors. The bidirectional variable selection procedure used 37 predictors. Despite rather different model sizes, all three had about the same R2, 68-69%.
+
+## Part 3
+
+Select the best model (among the 3) from Part 2 on the basis of R2 and model complexity (just by reasoning, no calculations/statistical tests needed). We will now focus on this best model in Part 3.
+
+```{r}
+summary(mb)
+```
+
+There are far too many predictors in this model to tell a simple story. We’ll just examine a few of the coefficients that have the smallest p-values.
+
+```{r}
+order(abs(summary(mb)$coef[,4]))
+```
+
+```{r}
+summary(mb)$coef[c(6,4,11),]
+```
+
+According to the model, percentage of working moms in the community is negatively associated with violent crime after accounting for the other variables. This makes sense because the percentage of working moms might be an indication of the level of education in the community, which we think would be negatively associated with crime. The number of vacant households and percent of persons in dense housing are positively associated with violent crime after accounting for the other variables. These might indicate the level of poverty in a community, which we might intuitively think of as being positively associated with crime.
+
+Run 10-fold cross-validation to estimate the test MSE. Use the fold column in the dataset for determining the folds. (Do not create your own random folds.) Report your estimated test MSE.
+
+```{r}
+error <- 0
+  
+for (i in 1:10) {
+  train <- x[x$fold != i,]
+  valid <- x[x$fold == i,]
+  
+  model <- lm(formula(mb), data = train)
+  yhat <- predict(model, valid)
+  error <- error + mean((yhat - valid$ViolentCrimesPerPop)^2)/10
+}
+error
+```
+
+The estimated test mean squared error is 0.0179.
+
+Use the bootstrap to estimate a 90% confidence interval for multiple R^2
+
+```{r}
+N <- 1000
+rsqvals <- rep(NA, N)
+for (i in 1:N) {
+  s <- sample(1:nrow(x), nrow(x), replace=TRUE)
+  m1 <- lm(f, data=x[s,])
+  rsqvals[i] <- summary(m1)$r.squared
+}
+quantile(rsqvals, c(0.05, 0.95))
+```
+
+
+
+
+
+
+
+
